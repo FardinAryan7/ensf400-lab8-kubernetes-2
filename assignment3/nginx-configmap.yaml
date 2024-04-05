@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-configmap
+data:
+  default.conf: |
+    upstream backend {
+      server app-1:3000;
+      server app-2:3000;
+    }
+
+    server {
+      location / {
+          proxy_pass http://backend;
+      }
+    }
