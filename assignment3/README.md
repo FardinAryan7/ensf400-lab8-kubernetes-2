@@ -1,51 +1,131 @@
-# ENSF 400 - Assignment 3 - Kubernetes
+# ENSF 400 - Assignment 3: Kubernetes Deployment with Canary Strategy
 
-This assignment has a full mark of 100. It takes up 5\% of your final grade. 
+## Introduction
 
-You will use Minikube in Codespaces to deploy an nginx service and 2 backend apps.
+This document provides a detailed account of the methodology employed to establish a canary deployment on Kubernetes, utilizing Minikube. It encompasses verbatim terminal outputs to substantiate each action undertaken in the preparation, deployment, and validation phases of the application.
 
-## Requirements
+## Prerequisites
 
-Based on your work for [Lab 7](https://github.com/denoslab/ensf400-lab7-kubernetes-1) and [Lab 8](https://github.com/denoslab/ensf400-lab8-kubernetes-2), deploy an `nginx` service so that:
+- Minikube 
+- kubectl command-line tool
 
-1. A `Deployment` config defined in `nginx-dep.yaml`. The Deployment has the name `nginx-dep` with 5 replicas. The Deployment uses a base image `nginx` with the version tag `1.14.2`. Expose port `80`.
-1. A `ConfigMap` defined in `nginx-configmap.yaml`, The `data` in the configmap has a key-value pair with the key being `default.conf` and value being the following:
+## Steps Taken
+
+### Starting Minikube
+
+Initializing Minikube, establishing a single-node Kubernetes cluster:
+
 ```
-upstream backend {
-    server app-1:8080;
-    server app-2:8080;
-}
-
-server {
-    location / {
-        proxy_pass http://backend;
-    }
-}
-```
-1. In the Deployment `nginx-dep`, mount the configuration file `default.conf` to the correct path of `/etc/nginx/conf.d` so that it serves as a load balancer, similar to what we have for [Assignment 2](https://github.com/denoslab/ensf400-lab5-ansible/tree/main/assignment2).
-1. A `Service` config of type `ClusterIP` defined in `nginx-svc.yaml`. The service has the name `nginx-svc`, exposes port `80`, and should use label selectors to select the pods from the `Deployment` defined in the last step.
-1. An `Ingress` config named `nginx-ingress.yaml` redirecting the requests to path `/` to the backend service `nginx-svc`. Example request and response:
-```bash
-$ curl http://$(minikube ip)/
-Hello World from [app-1-dep-86f67f4f87-2d28z]!
-$ curl http://$(minikube ip)/
-Hello World from [app-2-dep-7f686c4d8d-lr95c]!
-```
-1. Write `Deployment` and `Service` for `app-1` and `app-2`, respectively.
-1. Define two other `Ingress` configs named `app-1-ingress.yaml` and `app-2-ingress.yaml`, both redicting requests to `/` to the backend apps, taking `app-1` as the main deployment, and `app-2` as a canary deployment. The ingresses will redirect 70% of the traffic to `app-1` and 30% of the traffic to `app-2`. The docker images are pre-built for you. They can be downloaded using the URL below:
-```
-app-1: ghcr.io/denoslab/ensf400-sample-app:v1
-app-2: ghcr.io/denoslab/ensf400-sample-app:v2
+$ minikube start
 ```
 
-## Deliverables
+#### Output
 
-Submit the files below in a zip file. There is no need for TAs to access your Codespaces. TAs will mark your assignment based on the files you submitted.
+```
+😄  minikube v1.32.0 on Ubuntu 20.04 (docker/amd64)
+✨  Automatically selected the docker driver. Other choices: none, ssh
+📌  Using Docker driver with root privileges
+👍  Starting control plane node minikube in cluster minikube
+🚜  Pulling base image ...
+💾  Downloading Kubernetes v1.28.3 preload ...
+    > preloaded-images-k8s-v18-v1...:  403.35 MiB / 403.35 MiB  100.00% 153.40 
+    > gcr.io/k8s-minikube/kicbase...:  453.90 MiB / 453.90 MiB  100.00% 37.90 M
+🔥  Creating docker container (CPUs=2, Memory=2200MB) ...
+🐳  Preparing Kubernetes v1.28.3 on Docker 24.0.7 ...
+    ▪ Generating certificates and keys ...
+    ▪ Booting up control plane ...
+    ▪ Configuring RBAC rules ...
+🔗  Configuring bridge CNI (Container Networking Interface) ...
+    ▪ Using image gcr.io/k8s-minikube/storage-provisioner:v5
+🔎  Verifying Kubernetes components...
+🌟  Enabled addons: default-storageclass, storage-provisioner
+🏄  Done! kubectl is now configured to use "minikube" cluster and "default" namespace by default
+```
 
-1. (10%) `nginx-dep.yaml`
-1. (10%) `nginx-configmap.yaml`
-1. (10%) `nginx-svc.yaml`
-1. (20%) `nginx-ingress.yaml`. Include steps showing the requests using `curl` and responses from load-balanced app backends (`app-1` and `app-2`).
-1. (15%) `app-1-dep.yaml`, `app-1-svc.yaml`, `app-2-dep.yaml`, `app-2-svc.yaml`.
-1. (20%) `app-1-ingress.yaml` and `app-2-ingress.yaml`.
-1. (15%) A `README.md` Markdown file describing the steps and outputs meeting the requirements.
+### Enabling Ingress Addon
+
+Enabling the Ingress addon for managing external access to services:
+
+```
+$ minikube addons enable ingress
+```
+
+#### Output
+
+```
+@rajdeeepdas ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ minikube addons enable ingress
+💡  ingress is an addon maintained by Kubernetes. For any concerns contact minikube on GitHub.
+You can view the list of minikube maintainers at: https://github.com/kubernetes/minikube/blob/master/OWNERS
+    ▪ Using image registry.k8s.io/ingress-nginx/kube-webhook-certgen:v20231011-8b53cabe0
+    ▪ Using image registry.k8s.io/ingress-nginx/kube-webhook-certgen:v20231011-8b53cabe0
+    ▪ Using image registry.k8s.io/ingress-nginx/controller:v1.9.4
+🔎  Verifying ingress addon...
+🌟  The 'ingress' addon is enabled
+```
+
+### Deploying nginx and Application Components
+
+Applying the Kubernetes manifest files for the nginx reverse proxy and both versions of the application:
+
+
+```
+@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ kubectl apply -f nginx-dep.yaml
+deployment.apps/nginx-dep created
+@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ kubectl apply -f nginx-configmap.yaml
+configmap/nginx-configmap created
+@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ kubectl apply -f nginx-svc.yaml
+service/nginx-svc created
+@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ kubectl apply -f app-1-dep.yaml
+deployment.apps/app-1-dep created
+@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ kubectl apply -f app-1-svc.yaml
+service/app-1-svc created
+@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $  kubectl apply -f app-2-dep.yaml
+deployment.apps/app-2-dep created
+@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ kubectl apply -f app-2-svc.yaml
+service/app-2-svc created
+@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ kubectl apply -f app-1-ingress.yaml
+ingress.networking.k8s.io/app-1-ingress created
+@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ kubectl apply -f app-2-ingress.yaml
+ingress.networking.k8s.io/app-2-ingress created
+```
+
+### Verifying Deployment with Minikube IP
+
+Retriving the IP address of Minikube and testing the application for confirming the canary deployment was functioning correctly:
+
+```
+$ minikube ip
+```
+
+#### Output
+
+```
+192.168.49.2
+```
+
+Testing the responses of the application:
+
+```
+$ curl http://192.168.49.2/
+```
+
+#### Output
+
+```
+Hello World from [app-1-dep-86f67f4f87-c2c7l]!@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ curl http://192.168.49.2/
+Hello World from [app-2-dep-7f686c4d8d-crkq4]!@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ curl http://192.168.49.2/
+Hello World from [app-2-dep-7f686c4d8d-crkq4]!@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ curl http://192.168.49.2/
+Hello World from [app-1-dep-86f67f4f87-c2c7l]!@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ curl http://192.168.49.2/
+Hello World from [app-1-dep-86f67f4f87-c2c7l]!@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ curl http://192.168.49.2/
+Hello World from [app-1-dep-86f67f4f87-c2c7l]!@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ curl http://192.168.49.2/
+Hello World from [app-1-dep-86f67f4f87-c2c7l]!@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ curl http://192.168.49.2/
+Hello World from [app-1-dep-86f67f4f87-c2c7l]!@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ curl http://192.168.49.2/
+Hello World from [app-1-dep-86f67f4f87-c2c7l]!@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ curl http://192.168.49.2/
+Hello World from [app-2-dep-7f686c4d8d-crkq4]!@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ curl http://192.168.49.2/
+Hello World from [app-1-dep-86f67f4f87-c2c7l]!@FardinAryan7 ➜ /workspaces/ensf400-lab8-kubernetes-2/assignment3 (main) $ 
+...
+```
+
+## Conclusion
+
+The application has been successfully deployed and is now accessible. The effectiveness of the canary deployment strategy has been confirmed, as traffic is being correctly distributed between the stable and canary versions of the application.
